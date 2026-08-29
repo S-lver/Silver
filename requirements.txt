@@ -1,8 +1,21 @@
+# Core Framework
 flask>=2.3.0
 flask-cors>=4.0.0
 flask-limiter>=3.5.0
+
+# Environment & Config
 python-dotenv>=1.0.0
+
+# AI Providers
 groq>=0.9.0
 google-generativeai>=0.8.0
+
+# Text Processing
 markdown>=3.5.0
 bleach>=6.0.0
+
+# Production Server
+gunicorn>=21.2.0
+
+# Utilities
+requests>=2.31.0
