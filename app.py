@@ -66,17 +66,31 @@ SVG_EMOJIS = {
 }
 
 def replace_emojis_with_svg(text):
-    """Replace emoji characters with SVG equivalents"""
+    """Replace emoji characters with SVG equivalents (skip code blocks)"""
     if not text:
         return text
-    for emoji, svg in SVG_EMOJIS.items():
-        text = text.replace(emoji, f'<span class="emoji-svg">{svg}</span>')
-    return text
+    
+    lines = text.split('\n')
+    in_code_block = False
+    result = []
+    
+    for line in lines:
+        # Check for code block markers
+        if line.strip().startswith('```'):
+            in_code_block = not in_code_block
+        
+        # Only replace emojis outside code blocks
+        if not in_code_block:
+            for emoji, svg in SVG_EMOJIS.items():
+                line = line.replace(emoji, f'<span class="emoji-svg">{svg}</span>')
+        result.append(line)
+    
+    return '\n'.join(result)
 
 # ===== Markdown Processing with SVG Emojis =====
 def process_markdown(text):
     """Convert markdown to safe HTML with syntax highlighting and SVG emojis"""
-    # First, replace emojis with SVG
+    # First, replace emojis with SVG (outside code blocks)
     text = replace_emojis_with_svg(text)
     
     cleaner = Cleaner(
