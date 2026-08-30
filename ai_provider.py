@@ -14,28 +14,38 @@ class AIProvider:
         print("✅ Gemini AI initialized successfully")
     
     def get_streaming_response(self, messages, temperature=0.7, max_tokens=2048, top_p=0.9):
-        """Get streaming response from Gemini"""
+        """Get streaming response from Gemini with proper chat format"""
         try:
-            # Extract system prompt and conversation
+            # Extract system prompt and build conversation
             system_prompt = ""
-            conversation = []
+            conversation_history = []
             
             for msg in messages:
-                if msg.get('role') == 'system':
-                    system_prompt = msg.get('content', '')
-                else:
-                    conversation.append(msg)
+                role = msg.get('role')
+                content = msg.get('content', '')
+                
+                if role == 'system':
+                    system_prompt = content
+                elif role == 'user':
+                    conversation_history.append(f"User: {content}")
+                elif role == 'assistant':
+                    conversation_history.append(f"Assistant: {content}")
             
-            # Build the prompt
-            prompt = system_prompt + "\n\n" if system_prompt else ""
-            for msg in conversation:
-                role = "User" if msg.get('role') == 'user' else "Assistant"
-                prompt += f"{role}: {msg.get('content', '')}\n"
-            prompt += "Assistant: "
+            # Build the full prompt
+            full_prompt = ""
+            if system_prompt:
+                full_prompt = system_prompt + "\n\n"
+            
+            # Add conversation history
+            if conversation_history:
+                full_prompt += "\n".join(conversation_history) + "\n"
+            
+            # Add the final assistant prompt
+            full_prompt += "Assistant: "
             
             # Stream from Gemini
             response = self.model.generate_content(
-                prompt,
+                full_prompt,
                 generation_config=genai.types.GenerationConfig(
                     temperature=temperature,
                     max_output_tokens=max_tokens,
