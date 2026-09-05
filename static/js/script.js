@@ -1,10 +1,7 @@
 // ===== Theme Management =====
 function getPreferredTheme() {
-    // Check localStorage first
     const savedTheme = localStorage.getItem('silver-theme');
     if (savedTheme) return savedTheme;
-    
-    // Check system preference
     if (window.matchMedia('(prefers-color-scheme: dark)').matches) {
         return 'dark';
     }
@@ -15,7 +12,6 @@ function setTheme(theme) {
     document.documentElement.setAttribute('data-theme', theme);
     localStorage.setItem('silver-theme', theme);
     
-    // Update button icon state
     const toggle = document.getElementById('themeToggle');
     if (toggle) {
         const sun = toggle.querySelector('.sun');
@@ -134,21 +130,16 @@ function setInputState(enabled) {
 
 function trimConversation() {
     while (conversation.length > MAX_CONVERSATION) {
-        // Remove oldest user+assistant pair
-        const removed = conversation.splice(0, 2);
-        console.log(`Trimmed ${removed.length} messages from history`);
+        conversation.splice(0, 2);
     }
 }
 
 // ===== Markdown Rendering =====
 function renderMarkdown(html) {
-    // Create a temporary container
     const temp = document.createElement('div');
     temp.innerHTML = html;
     
-    // Find all code blocks and add copy buttons
     temp.querySelectorAll('pre').forEach((pre) => {
-        // Add language badge
         const code = pre.querySelector('code');
         if (code) {
             const lang = code.className.replace('language-', '');
@@ -160,7 +151,6 @@ function renderMarkdown(html) {
                 pre.appendChild(badge);
             }
             
-            // Add copy button
             const copyBtn = document.createElement('button');
             copyBtn.className = 'code-copy-btn';
             copyBtn.textContent = '📋 Copy';
@@ -189,7 +179,7 @@ function renderMarkdown(html) {
     return temp.innerHTML;
 }
 
-// ===== Send Message =====
+// ===== Send Message (FIXED) =====
 async function sendMessage() {
     if (!userInput) return;
     
@@ -204,7 +194,7 @@ async function sendMessage() {
     conversation.push({ role: 'user', content: text });
     trimConversation();
 
-    showTyping();
+    const typingIndicator = showTyping();
 
     try {
         const response = await fetch('/api/chat', {
@@ -219,7 +209,6 @@ async function sendMessage() {
                 const errorData = await response.json();
                 errorMessage = errorData.error || errorMessage;
             } catch (e) {
-                // If response is not JSON, use status text
                 errorMessage = response.statusText || errorMessage;
             }
             throw new Error(errorMessage);
@@ -227,7 +216,7 @@ async function sendMessage() {
 
         hideTyping();
 
-        // Create bot message container with markdown support
+        // Create bot message container
         const botDiv = document.createElement('div');
         botDiv.className = 'message bot';
         messagesEl.appendChild(botDiv);
@@ -236,57 +225,66 @@ async function sendMessage() {
         const decoder = new TextDecoder();
         let fullResponse = '';
         let responseComplete = false;
+        let buffer = '';
 
         while (true) {
             const { done, value } = await reader.read();
-            
-            // If the stream is done, break out
-            if (done) {
-                break;
-            }
+            if (done) break;
 
-            const chunk = decoder.decode(value);
-            const lines = chunk.split('\n');
+            // Decode and accumulate the buffer
+            buffer += decoder.decode(value, { stream: true });
+            
+            // Split by newlines and process each line
+            const lines = buffer.split('\n');
+            // Keep the last incomplete line in buffer
+            buffer = lines.pop() || '';
 
             for (const line of lines) {
-                if (line.startsWith('data: ')) {
-                    const data = line.slice(6);
-                    
-                    // Skip empty data or [DONE] messages
-                    if (!data || data === '[DONE]') {
-                        continue;
-                    }
+                // Skip empty lines
+                if (!line.trim()) continue;
+                
+                // Check for SSE data prefix
+                if (!line.startsWith('data: ')) continue;
+                
+                const data = line.slice(6).trim();
+                
+                // Skip [DONE] marker
+                if (data === '[DONE]') {
+                    continue;
+                }
 
-                    try {
-                        const parsed = JSON.parse(data);
-                        
-                        // Check if there's an error
-                        if (parsed.error) {
-                            throw new Error(parsed.error);
-                        }
-                        
-                        // Check if this is the final processed HTML
-                        if (parsed.done && parsed.html) {
-                            // Render the fully processed markdown
-                            botDiv.innerHTML = renderMarkdown(parsed.html);
-                            scrollToBottom();
-                            conversation.push({ role: 'assistant', content: fullResponse });
-                            trimConversation();
-                            responseComplete = true;
-                            break;
-                        }
-                        
-                        // Streaming content
-                        if (parsed.content) {
-                            fullResponse += parsed.content;
-                            // Show raw text while streaming
-                            botDiv.textContent = fullResponse;
-                            scrollToBottom();
-                        }
-                    } catch (e) {
-                        // Skip invalid JSON (this is normal during streaming)
-                        console.debug('Skipping invalid JSON:', e.message);
+                // Skip empty data
+                if (!data) continue;
+
+                try {
+                    const parsed = JSON.parse(data);
+                    
+                    // Check for error
+                    if (parsed.error) {
+                        throw new Error(parsed.error);
                     }
+                    
+                    // Check if this is the final processed HTML
+                    if (parsed.done && parsed.html) {
+                        // Render the fully processed markdown
+                        botDiv.innerHTML = renderMarkdown(parsed.html);
+                        scrollToBottom();
+                        conversation.push({ role: 'assistant', content: fullResponse });
+                        trimConversation();
+                        responseComplete = true;
+                        break;
+                    }
+                    
+                    // Streaming content
+                    if (parsed.content !== undefined) {
+                        fullResponse += parsed.content;
+                        // Show raw text while streaming
+                        botDiv.textContent = fullResponse;
+                        scrollToBottom();
+                    }
+                } catch (e) {
+                    // Skip invalid JSON (this is normal during streaming)
+                    console.debug('Skipping invalid JSON:', data);
                 }
             }
             
@@ -298,21 +296,24 @@ async function sendMessage() {
 
         // Fallback: If no final HTML was sent but we have content
         if (!responseComplete && fullResponse) {
-            // Simple fallback: just show the raw text
             botDiv.textContent = fullResponse;
             conversation.push({ role: 'assistant', content: fullResponse });
             trimConversation();
+        }
+        
+        // If no content at all, show a message
+        if (!fullResponse && !responseComplete) {
+            botDiv.textContent = '⚠️ No response received. Please try again.';
         }
 
     } catch (error) {
         hideTyping();
         console.error('Error details:', error);
         
-        // Check if it's a rate limit error
         if (error.message && error.message.toLowerCase().includes('rate limit')) {
             addMessage('⏳ Rate limit exceeded. Please wait a moment and try again.', 'bot');
         } else {
-            addMessage('⚠️ Connection error: ' + error.message + '. Please try again.', 'bot');
+            addMessage('⚠️ Error: ' + error.message + '. Please try again.', 'bot');
         }
     } finally {
         isProcessing = false;
@@ -382,7 +383,6 @@ async function checkHealth() {
 
 // ===== Listen for system theme changes =====
 window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', (e) => {
-    // Only change if user hasn't manually set a theme
     if (!localStorage.getItem('silver-theme')) {
         setTheme(e.matches ? 'dark' : 'light');
     }
