@@ -10,7 +10,6 @@ from dotenv import load_dotenv
 import markdown
 from bleach import Cleaner
 
-# Import our AI Provider (Gemini only)
 from ai_provider import AIProvider
 
 # ===== Setup Logging =====
@@ -42,7 +41,7 @@ limiter = Limiter(
 # ===== CORS =====
 CORS(app)
 
-# ===== Initialize AI Provider (Gemini only) =====
+# ===== Initialize AI Provider =====
 try:
     ai_provider = AIProvider()
     logger.info("✅ AI Provider initialized successfully")
@@ -66,7 +65,6 @@ SVG_EMOJIS = {
 }
 
 def replace_emojis_with_svg(text):
-    """Replace emoji characters with SVG equivalents (skip code blocks)"""
     if not text:
         return text
     
@@ -86,7 +84,9 @@ def replace_emojis_with_svg(text):
     return '\n'.join(result)
 
 def process_markdown(text):
-    """Convert markdown to safe HTML with syntax highlighting and SVG emojis"""
+    if not text:
+        return text
+    
     text = replace_emojis_with_svg(text)
     
     cleaner = Cleaner(
@@ -126,7 +126,6 @@ def process_markdown(text):
     return cleaner.clean(html)
 
 def optimize_messages(messages, max_history=15):
-    """Trim conversation history to save tokens"""
     if not messages:
         return messages
     
@@ -136,7 +135,6 @@ def optimize_messages(messages, max_history=15):
     
     return system_msgs + trimmed_history
 
-# ===== Routes =====
 @app.route('/')
 def home():
     return render_template('index.html')
@@ -155,7 +153,6 @@ def chat():
         
         messages = data.get('messages', [])
         
-        # Add system prompt if missing
         if not any(msg.get('role') == 'system' for msg in messages):
             messages.insert(0, {
                 'role': 'system',
@@ -181,31 +178,37 @@ When responding:
         
         def generate():
             full_response = ""
+            chunk_count = 0
             
             try:
                 for chunk in stream_generator:
                     content = chunk
                     full_response += content
-                    # Send each chunk as a separate SSE event
+                    chunk_count += 1
                     yield f"data: {json.dumps({'content': content})}\n\n"
                 
-                # Process markdown with SVG emojis
+                logger.info(f"Request {request_id}: Received {chunk_count} chunks from Gemini")
+                
+                # Check if we got any content
+                if not full_response:
+                    logger.error(f"Request {request_id}: Empty response from Gemini")
+                    yield f"data: {json.dumps({'error': 'Empty response from AI'})}\n\n"
+                    yield "data: [DONE]\n\n"
+                    return
+                
                 try:
                     processed = process_markdown(full_response)
-                    # Send the final HTML with a clear flag
                     yield f"data: {json.dumps({'done': True, 'html': processed})}\n\n"
                 except Exception as e:
                     logger.error(f"Markdown processing error: {e}")
                     yield f"data: {json.dumps({'done': True, 'html': full_response})}\n\n"
                 
-                # Send the [DONE] marker
                 yield "data: [DONE]\n\n"
-                
-                logger.info(f"Request {request_id}: Complete - Response length: {len(full_response)}")
                 
             except Exception as e:
                 logger.error(f"Request {request_id}: Streaming error: {e}")
                 yield f"data: {json.dumps({'error': str(e)})}\n\n"
+                yield "data: [DONE]\n\n"
         
         return Response(
             generate(),
@@ -228,14 +231,12 @@ def health():
         'status': '🪙 Silver is alive!',
         'timestamp': datetime.now().isoformat(),
         'provider': 'Google Gemini',
-        'model': 'gemini-1.5-flash',
+        'model': getattr(ai_provider, 'model_name', 'unknown'),
         'rate_limits': {
             'per_minute': 10,
             'per_hour': 100,
             'per_day': 200
-        },
-        'markdown': 'enabled',
-        'svg_emojis': 'enabled'
+        }
     })
 
 @app.errorhandler(429)
