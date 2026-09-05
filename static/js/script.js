@@ -47,7 +47,6 @@ const themeToggle = document.getElementById('themeToggle');
 const initialTheme = getPreferredTheme();
 setTheme(initialTheme);
 
-// ===== Theme Toggle Event =====
 if (themeToggle) {
     themeToggle.addEventListener('click', toggleTheme);
 }
@@ -179,7 +178,7 @@ function renderMarkdown(html) {
     return temp.innerHTML;
 }
 
-// ===== Send Message (FIXED) =====
+// ===== Send Message (FIXED - More Reliable) =====
 async function sendMessage() {
     if (!userInput) return;
     
@@ -194,7 +193,7 @@ async function sendMessage() {
     conversation.push({ role: 'user', content: text });
     trimConversation();
 
-    const typingIndicator = showTyping();
+    showTyping();
 
     try {
         const response = await fetch('/api/chat', {
@@ -250,6 +249,7 @@ async function sendMessage() {
                 
                 // Skip [DONE] marker
                 if (data === '[DONE]') {
+                    console.log('Received [DONE] marker');
                     continue;
                 }
 
@@ -258,6 +258,7 @@ async function sendMessage() {
 
                 try {
                     const parsed = JSON.parse(data);
+                    console.log('Received:', parsed);
                     
                     // Check for error
                     if (parsed.error) {
@@ -266,6 +267,7 @@ async function sendMessage() {
                     
                     // Check if this is the final processed HTML
                     if (parsed.done && parsed.html) {
+                        console.log('Final HTML received, length:', parsed.html.length);
                         // Render the fully processed markdown
                         botDiv.innerHTML = renderMarkdown(parsed.html);
                         scrollToBottom();
@@ -276,7 +278,7 @@ async function sendMessage() {
                     }
                     
                     // Streaming content
-                    if (parsed.content !== undefined) {
+                    if (parsed.content !== undefined && parsed.content !== null) {
                         fullResponse += parsed.content;
                         // Show raw text while streaming
                         botDiv.textContent = fullResponse;
@@ -296,6 +298,7 @@ async function sendMessage() {
 
         // Fallback: If no final HTML was sent but we have content
         if (!responseComplete && fullResponse) {
+            console.log('No final HTML, using raw text fallback');
             botDiv.textContent = fullResponse;
             conversation.push({ role: 'assistant', content: fullResponse });
             trimConversation();
@@ -303,6 +306,7 @@ async function sendMessage() {
         
         // If no content at all, show a message
         if (!fullResponse && !responseComplete) {
+            console.warn('No response content received');
             botDiv.textContent = '⚠️ No response received. Please try again.';
         }
 
