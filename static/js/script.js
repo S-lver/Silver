@@ -60,6 +60,7 @@ if (themeToggle) {
 const conversation = [];
 let isProcessing = false;
 let welcomeRemoved = false;
+const MAX_CONVERSATION = 30;
 
 // ===== Utility Functions =====
 function removeWelcome() {
@@ -89,7 +90,9 @@ function addMessage(content, sender) {
 
 function scrollToBottom() {
     requestAnimationFrame(() => {
-        messagesContainer.scrollTop = messagesContainer.scrollHeight;
+        if (messagesContainer) {
+            messagesContainer.scrollTop = messagesContainer.scrollHeight;
+        }
     });
 }
 
@@ -109,19 +112,33 @@ function hideTyping() {
         indicator.style.transition = 'all 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94)';
         indicator.style.opacity = '0';
         indicator.style.transform = 'scale(0.95)';
-        setTimeout(() => indicator.remove(), 300);
+        setTimeout(() => {
+            if (indicator.parentNode) {
+                indicator.remove();
+            }
+        }, 300);
     }
 }
 
 function setInputState(enabled) {
-    userInput.disabled = !enabled;
-    sendBtn.disabled = !enabled;
-    if (enabled) {
+    if (userInput) {
+        userInput.disabled = !enabled;
+    }
+    if (sendBtn) {
+        sendBtn.disabled = !enabled;
+    }
+    if (enabled && userInput) {
         userInput.focus();
     }
 }
 
-// ===== Send Message =====
+function trimConversation() {
+    while (conversation.length > MAX_CONVERSATION) {
+        // Remove oldest user+assistant pair
+        const removed = conversation.splice(0, 2);
+        console.log(`Trimmed ${removed.length} messages from history`);
+    }
+}
 
 // ===== Markdown Rendering =====
 function renderMarkdown(html) {
@@ -157,6 +174,11 @@ function renderMarkdown(html) {
                         copyBtn.textContent = '📋 Copy';
                         copyBtn.classList.remove('copied');
                     }, 2000);
+                }).catch(() => {
+                    copyBtn.textContent = '❌ Failed';
+                    setTimeout(() => {
+                        copyBtn.textContent = '📋 Copy';
+                    }, 2000);
                 });
             };
             pre.style.position = 'relative';
@@ -167,8 +189,10 @@ function renderMarkdown(html) {
     return temp.innerHTML;
 }
 
-// ===== Send Message (FIXED) =====
+// ===== Send Message =====
 async function sendMessage() {
+    if (!userInput) return;
+    
     const text = userInput.value.trim();
     if (!text || isProcessing) return;
 
@@ -178,6 +202,7 @@ async function sendMessage() {
 
     addMessage(text, 'user');
     conversation.push({ role: 'user', content: text });
+    trimConversation();
 
     showTyping();
 
@@ -189,8 +214,15 @@ async function sendMessage() {
         });
 
         if (!response.ok) {
-            const errorData = await response.json();
-            throw new Error(errorData.error || 'Network response was not ok');
+            let errorMessage = 'Network response was not ok';
+            try {
+                const errorData = await response.json();
+                errorMessage = errorData.error || errorMessage;
+            } catch (e) {
+                // If response is not JSON, use status text
+                errorMessage = response.statusText || errorMessage;
+            }
+            throw new Error(errorMessage);
         }
 
         hideTyping();
@@ -228,12 +260,18 @@ async function sendMessage() {
                     try {
                         const parsed = JSON.parse(data);
                         
+                        // Check if there's an error
+                        if (parsed.error) {
+                            throw new Error(parsed.error);
+                        }
+                        
                         // Check if this is the final processed HTML
                         if (parsed.done && parsed.html) {
                             // Render the fully processed markdown
                             botDiv.innerHTML = renderMarkdown(parsed.html);
                             scrollToBottom();
                             conversation.push({ role: 'assistant', content: fullResponse });
+                            trimConversation();
                             responseComplete = true;
                             break;
                         }
@@ -247,7 +285,7 @@ async function sendMessage() {
                         }
                     } catch (e) {
                         // Skip invalid JSON (this is normal during streaming)
-                        console.debug('Skipping invalid JSON:', e);
+                        console.debug('Skipping invalid JSON:', e.message);
                     }
                 }
             }
@@ -263,6 +301,7 @@ async function sendMessage() {
             // Simple fallback: just show the raw text
             botDiv.textContent = fullResponse;
             conversation.push({ role: 'assistant', content: fullResponse });
+            trimConversation();
         }
 
     } catch (error) {
@@ -270,32 +309,37 @@ async function sendMessage() {
         console.error('Error details:', error);
         
         // Check if it's a rate limit error
-        if (error.message && error.message.includes('Rate limit')) {
+        if (error.message && error.message.toLowerCase().includes('rate limit')) {
             addMessage('⏳ Rate limit exceeded. Please wait a moment and try again.', 'bot');
         } else {
-            addMessage('⚠️ Connection error. Please try again.', 'bot');
+            addMessage('⚠️ Connection error: ' + error.message + '. Please try again.', 'bot');
         }
     } finally {
         isProcessing = false;
         setInputState(true);
     }
 }
-// ===== Event Listeners =====
-sendBtn.addEventListener('click', sendMessage);
 
-userInput.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-        e.preventDefault();
-        sendMessage();
-    }
-});
+// ===== Event Listeners =====
+if (sendBtn) {
+    sendBtn.addEventListener('click', sendMessage);
+}
+
+if (userInput) {
+    userInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault();
+            sendMessage();
+        }
+    });
+}
 
 // ===== Suggestion Chips =====
 document.addEventListener('click', (e) => {
     const chip = e.target.closest('.suggestion-chip');
     if (chip) {
         const prompt = chip.dataset.prompt;
-        if (prompt) {
+        if (prompt && userInput) {
             userInput.value = prompt;
             sendMessage();
         }
@@ -303,15 +347,17 @@ document.addEventListener('click', (e) => {
 });
 
 // ===== Keyboard shortcut hint =====
-const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0;
-if (isMac) {
-    document.querySelector('.input-hint').textContent = 'Press ⌘⏎ or Enter to send';
+const inputHint = document.querySelector('.input-hint');
+if (inputHint) {
+    const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0;
+    inputHint.textContent = isMac ? 'Press ⌘⏎ or Enter to send' : 'Press Enter to send';
 }
 
 // ===== Health Check =====
 async function checkHealth() {
     try {
         const response = await fetch('/api/health');
+        if (!response.ok) throw new Error('Health check failed');
         const data = await response.json();
         console.log('🪙 Silver status:', data);
         
