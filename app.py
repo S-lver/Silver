@@ -75,11 +75,9 @@ def replace_emojis_with_svg(text):
     result = []
     
     for line in lines:
-        # Check for code block markers
         if line.strip().startswith('```'):
             in_code_block = not in_code_block
         
-        # Only replace emojis outside code blocks
         if not in_code_block:
             for emoji, svg in SVG_EMOJIS.items():
                 line = line.replace(emoji, f'<span class="emoji-svg">{svg}</span>')
@@ -87,10 +85,8 @@ def replace_emojis_with_svg(text):
     
     return '\n'.join(result)
 
-# ===== Markdown Processing with SVG Emojis =====
 def process_markdown(text):
     """Convert markdown to safe HTML with syntax highlighting and SVG emojis"""
-    # First, replace emojis with SVG (outside code blocks)
     text = replace_emojis_with_svg(text)
     
     cleaner = Cleaner(
@@ -129,7 +125,6 @@ def process_markdown(text):
     
     return cleaner.clean(html)
 
-# ===== Optimize Messages =====
 def optimize_messages(messages, max_history=15):
     """Trim conversation history to save tokens"""
     if not messages:
@@ -144,16 +139,13 @@ def optimize_messages(messages, max_history=15):
 # ===== Routes =====
 @app.route('/')
 def home():
-    """Serve the chat interface"""
     return render_template('index.html')
 
 @app.route('/api/chat', methods=['POST'])
 @limiter.limit("10 per minute")
 @limiter.limit("100 per hour")
 def chat():
-    """Main chat endpoint with rate limiting and markdown support"""
     client_ip = request.remote_addr
-    user_agent = request.headers.get('User-Agent', 'unknown')
     request_id = datetime.now().strftime('%Y%m%d%H%M%S%f')
     
     try:
@@ -176,17 +168,10 @@ When responding:
 - You can use emojis sparingly to add personality to responses'''
             })
         
-        # Optimize conversation
         optimized_messages = optimize_messages(messages, max_history=15)
         
-        # Calculate estimated tokens
-        total_chars = sum(len(msg.get('content', '')) for msg in optimized_messages)
-        estimated_tokens = total_chars // 4
+        logger.info(f"Request {request_id}: IP={client_ip}, Messages={len(optimized_messages)}")
         
-        # Log the request
-        logger.info(f"Request {request_id}: IP={client_ip}, Messages={len(optimized_messages)}, EstTokens={estimated_tokens}")
-        
-        # Get response from Gemini (with streaming)
         stream_generator = ai_provider.get_streaming_response(
             optimized_messages,
             temperature=0.7,
@@ -195,33 +180,32 @@ When responding:
         )
         
         def generate():
-            """Generate streaming response with markdown processing"""
             full_response = ""
-            tokens_used = 0
             
             try:
                 for chunk in stream_generator:
                     content = chunk
                     full_response += content
-                    tokens_used += len(content) // 4
-                    yield f"data: {json.dumps({'content': content, 'full': full_response})}\n\n"
+                    # Send each chunk as a separate SSE event
+                    yield f"data: {json.dumps({'content': content})}\n\n"
                 
                 # Process markdown with SVG emojis
                 try:
                     processed = process_markdown(full_response)
+                    # Send the final HTML with a clear flag
                     yield f"data: {json.dumps({'done': True, 'html': processed})}\n\n"
                 except Exception as e:
                     logger.error(f"Markdown processing error: {e}")
                     yield f"data: {json.dumps({'done': True, 'html': full_response})}\n\n"
                 
-                # Log completion
-                logger.info(f"Request {request_id}: Complete - Tokens: {estimated_tokens + tokens_used}")
+                # Send the [DONE] marker
+                yield "data: [DONE]\n\n"
+                
+                logger.info(f"Request {request_id}: Complete - Response length: {len(full_response)}")
                 
             except Exception as e:
                 logger.error(f"Request {request_id}: Streaming error: {e}")
                 yield f"data: {json.dumps({'error': str(e)})}\n\n"
-            
-            yield "data: [DONE]\n\n"
         
         return Response(
             generate(),
@@ -240,7 +224,6 @@ When responding:
 @app.route('/api/health', methods=['GET'])
 @limiter.exempt
 def health():
-    """Health check endpoint"""
     return jsonify({
         'status': '🪙 Silver is alive!',
         'timestamp': datetime.now().isoformat(),
@@ -257,7 +240,6 @@ def health():
 
 @app.errorhandler(429)
 def ratelimit_handler(e):
-    """Handle rate limit exceeded"""
     return jsonify({
         'error': 'Rate limit exceeded. Please slow down.',
         'message': 'You have exceeded the rate limit. Please wait and try again.',
