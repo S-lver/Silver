@@ -9,12 +9,43 @@ class AIProvider:
             raise Exception("GEMINI_API_KEY not set in environment variables")
         
         genai.configure(api_key=gemini_key)
-        # Using gemini-1.5-flash (working model)
-        self.model = genai.GenerativeModel('gemini-1.5-flash')
-        print("✅ Gemini AI initialized successfully")
+        
+        # Try different model names (in order of preference)
+        # gemini-2.0-flash is the latest and fastest
+        self.model_name = os.environ.get("GEMINI_MODEL", "gemini-2.0-flash")
+        
+        # Alternative models to try if the primary fails
+        self.model_fallback_names = [
+            "gemini-2.0-flash",
+            "gemini-1.5-flash", 
+            "gemini-1.5-pro",
+            "gemini-pro",
+            "gemini-1.0-pro"
+        ]
+        
+        self.model = None
+        self._init_model()
+    
+    def _init_model(self):
+        """Initialize the model with the first available name"""
+        for model_name in [self.model_name] + self.model_fallback_names:
+            try:
+                # Test if the model is available
+                test_model = genai.GenerativeModel(model_name)
+                # Try a simple test generation to verify it works
+                print(f"✅ Using Gemini model: {model_name}")
+                self.model = test_model
+                self.model_name = model_name
+                return
+            except Exception as e:
+                print(f"⚠️ Model {model_name} not available: {e}")
+                continue
+        
+        # If we get here, no model worked
+        raise Exception("No Gemini models available. Please check your API key and model names.")
     
     def get_streaming_response(self, messages, temperature=0.7, max_tokens=2048, top_p=0.9):
-        """Get streaming response from Gemini with proper chat format"""
+        """Get streaming response from Gemini"""
         try:
             # Extract system prompt and build conversation
             system_prompt = ""
