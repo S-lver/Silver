@@ -1,0 +1,190 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: dark light;
+  --canvas-bg: #0a0a0a;
+  --canvas-bg-alt: #121212;
+  --text-primary: #f0f0f0;
+  --text-secondary: #9e9e9e;
+  --text-muted: #525252;
+  --border-glass: rgba(255, 255, 255, 0.08);
+  --border-glass-strong: rgba(255, 255, 255, 0.14);
+  --bubble-bot: rgba(255, 255, 255, 0.035);
+  --bubble-user: rgba(224, 224, 224, 0.08);
+}
+
+[data-theme="light"] {
+  --canvas-bg: #ffffff;
+  --canvas-bg-alt: #f7f7f8;
+  --text-primary: #121212;
+  --text-secondary: #525252;
+  --text-muted: #9e9e9e;
+  --border-glass: rgba(0, 0, 0, 0.06);
+  --border-glass-strong: rgba(0, 0, 0, 0.12);
+  --bubble-bot: rgba(0, 0, 0, 0.03);
+  --bubble-user: rgba(0, 0, 0, 0.06);
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html,
+body {
+  height: 100%;
+  overscroll-behavior: none;
+}
+
+body {
+  background: var(--canvas-bg);
+  color: var(--text-primary);
+  font-family: var(--font-inter), system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+  transition: background 0.5s cubic-bezier(0.16, 1, 0.3, 1),
+    color 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* ---- Silver gradient text (for wordmarks, key headings) ---- */
+.text-silver-gradient {
+  background-image: linear-gradient(
+    135deg,
+    #e0e0e0 0%,
+    #ffffff 25%,
+    #9e9e9e 55%,
+    #525252 100%
+  );
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  -webkit-text-fill-color: transparent;
+}
+
+[data-theme="light"] .text-silver-gradient {
+  background-image: linear-gradient(
+    135deg,
+    #525252 0%,
+    #121212 35%,
+    #7a7a7a 70%,
+    #2a2a2a 100%
+  );
+}
+
+/* ---- Glass surface (canvas panels, popovers) ---- */
+.glass-surface {
+  background: rgba(18, 18, 18, 0.55);
+  border: 1px solid var(--border-glass);
+  backdrop-filter: blur(24px) saturate(140%);
+  -webkit-backdrop-filter: blur(24px) saturate(140%);
+}
+
+[data-theme="light"] .glass-surface {
+  background: rgba(255, 255, 255, 0.7);
+}
+
+/* ---- Scrollbar: hairline, silver-tinted ---- */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(158, 158, 158, 0.28);
+  border-radius: 9999px;
+  transition: background 0.3s ease;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(224, 224, 224, 0.45);
+}
+
+/* ---- Code blocks: muted obsidian, silver hairline border ---- */
+.prose-silver pre {
+  background: #0d0d0d;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 12px;
+  padding: 18px 20px;
+  overflow-x: auto;
+  font-family: var(--font-jetbrains), ui-monospace, monospace;
+  font-size: 13px;
+  line-height: 1.65;
+  position: relative;
+}
+
+[data-theme="light"] .prose-silver pre {
+  background: #f7f7f8;
+  border-color: rgba(0, 0, 0, 0.06);
+}
+
+.prose-silver code {
+  font-family: var(--font-jetbrains), ui-monospace, monospace;
+  font-size: 13px;
+}
+
+.prose-silver :not(pre) > code {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  padding: 1px 6px;
+  border-radius: 6px;
+}
+
+[data-theme="light"] .prose-silver :not(pre) > code {
+  background: rgba(0, 0, 0, 0.04);
+  border-color: rgba(0, 0, 0, 0.06);
+}
+
+.prose-silver a {
+  color: #e0e0e0;
+  text-decoration: none;
+  border-bottom: 1px solid rgba(224, 224, 224, 0.25);
+  transition: border-color 0.2s ease;
+}
+.prose-silver a:hover {
+  border-bottom-color: #e0e0e0;
+}
+[data-theme="light"] .prose-silver a {
+  color: #2a2a2a;
+  border-bottom-color: rgba(42, 42, 42, 0.25);
+}
+
+.prose-silver blockquote {
+  border-left: 2px solid rgba(224, 224, 224, 0.35);
+  padding-left: 16px;
+  margin: 12px 0;
+  color: var(--text-secondary);
+  font-style: italic;
+}
+
+.prose-silver table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 14px 0;
+  font-size: 14px;
+}
+.prose-silver th,
+.prose-silver td {
+  padding: 8px 12px;
+  border: 1px solid var(--border-glass);
+  text-align: left;
+}
+.prose-silver th {
+  background: rgba(255, 255, 255, 0.03);
+  font-weight: 600;
+}
+
+/* ---- Reduced motion respect ---- */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
